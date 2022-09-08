@@ -333,7 +333,6 @@ int main(int argc, char **argv)
     fprintf(output, "@ xlabel x coordinate [nm]\n");
     fprintf(output, "@ ylabel y coordinate [nm]\n");
     fprintf(output, "@ zlabel water defect [arb. u.]\n");
-    fprintf(output, "@ grid --\n");
     fprintf(output, "$ type colorbar\n");
     fprintf(output, "$ colormap hot\n");
 
