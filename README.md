@@ -59,10 +59,10 @@ When using `memthick` to analyze a membrane-protein simulation, it is a good ide
 ### Example
 
 ```
-memthick -c system.gro -f md_centered_fit.xtc -l "resname POPC" -x 0-13 -y "0 - 13" -a 15
+memthick -c system.gro -f md_centered.xtc -l "resname POPC" -x 0-13 -y "0 - 13" -a 15
 ```
 
-`memthick` will load information about the atoms (but not atom coordinates) from `system.gro`. Every simulation frame saved in the trajectory `md_centered_fit.xtc` will be analyzed. Analyzed part of the simulation box can be specified using the flags `-x` and `-y`. In this case, `memthick` will only analyze block-shaped area spanning from `0 nm` to `13 nm` on the x-axis and from `0 nm` to `13 nm` on the y-axis. The size of the area on the z-axis corresponds to the current size of the simulation box. Membrane thickness will not be calculated for bins with fewer than 15 samples (flag `-a`) in either leaflet (the resulting thickness will be 'nan' for these bins in the output file).
+`memthick` will load information about the atoms (but not atom coordinates) from `system.gro`. Every simulation frame saved in the trajectory `md_centered.xtc` will be analyzed. Analyzed part of the simulation box can be specified using the flags `-x` and `-y`. In this case, `memthick` will only analyze block-shaped area spanning from `0 nm` to `13 nm` on the x-axis and from `0 nm` to `13 nm` on the y-axis. The size of the area on the z-axis corresponds to the current size of the simulation box. Membrane thickness will not be calculated for bins with fewer than 15 samples (flag `-a`) in either leaflet (the resulting thickness will be 'nan' for these bins in the output file).
 
 All atoms corresponding to residues named `POPC` will be considered to be lipid atoms and will be used for the calculation of membrane center. Atoms named `PO4` (default option) will be considered to represent phosphates and their average position relative to the membrane center will be calculated. Phosphates are assigned to each leaflet based on their position relative to the membrane center. All phosphates currently positioned _above_ the membrane center of geometry will be assigned to the upper leaflet, while phosphates currently positioned _below_ the membrane center of geometry will be assigned to the lower leaflet. Assigning phosphates to individual leaflets is performed for every frame of the trajectory.
 
@@ -167,10 +167,10 @@ Note that while `wdmap` does not really use a 'water defect cylinder' during the
 
 ### Example
 ```
-wdmap -c system.gro -f md_centered_fit.xtc -l "resname POPC" -x 3.2-15.2 -y "3.2 - 15.2" -e 3.0
+wdmap -c system.gro -f md_centered.xtc -l "resname POPC" -x 3.2-15.2 -y "3.2 - 15.2" -e 3.0
 ```
 
-`wdmap` will load information about the atoms (but not atom coordinates) from `system.gro`. Every simulation frame saved in the trajectory `md_centered_fit.xtc` will be analyzed. Analyzed part of the simulation box can be specified using the flags `-x` and `-y`. In this case, `wdmap` will only analyze block-shaped area spanning from `3.2 nm` to `15.2 nm` on the x-axis and from `3.2 nm` to `15.2 nm` on the y-axis. The size of the area on the z-axis corresponds to the current size of the simulation box.
+`wdmap` will load information about the atoms (but not atom coordinates) from `system.gro`. Every simulation frame saved in the trajectory `md_centered.xtc` will be analyzed. Analyzed part of the simulation box can be specified using the flags `-x` and `-y`. In this case, `wdmap` will only analyze block-shaped area spanning from `3.2 nm` to `15.2 nm` on the x-axis and from `3.2 nm` to `15.2 nm` on the y-axis. The size of the area on the z-axis corresponds to the current size of the simulation box.
 
 All atoms corresponding to residues named `POPC` will be considered to be membrane lipid atoms. Atoms named `W` (default option) will be considered to represent water molecules and will be used to calculate the water defect. Only water atoms closer than _1.5_ nm (flag `-e 3.0`) from the geometric center of the `POPC` residues will be considered to be part of the water defect.
 
