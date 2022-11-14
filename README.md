@@ -102,12 +102,12 @@ _This shows a membrane with a hydrophobic transmembrane alpha-helix. Membrane is
 ### Options
 
 ```
-Usage: wdcalc -c GRO_FILE -f XTC_FILE [OPTION]...
+Usage: wdcalc -c GRO_FILE [OPTION]...
 
 OPTIONS
 -h          print this message and exit
 -c STRING   gro file to read
--f STRING   xtc file to read
+-f STRING   xtc file to read (optional)
 -n STRING   ndx file to read (optional, default: index.ndx)
 -l STRING   specification of membrane lipids (default: Membrane) 
 -p STRING   specification of protein; use "no" if there is no protein (default: Protein)

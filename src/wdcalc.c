@@ -24,7 +24,7 @@ int get_arguments(
         float *height
         ) 
 {
-    int gro_specified = 0, xtc_specified = 0;
+    int gro_specified = 0;
 
     int opt = 0;
     while((opt = getopt(argc, argv, "c:f:l:n:r:e:p:w:h")) != -1) {
@@ -40,7 +40,6 @@ int get_arguments(
         // xtc file to read
         case 'f':
             *xtc_file = optarg;
-            xtc_specified = 1;
             break;
         // specification of the lipids (residue names)
         case 'l':
@@ -80,8 +79,8 @@ int get_arguments(
         }
     }
 
-    if (!gro_specified || !xtc_specified) {
-        fprintf(stderr, "Gro file and xtc file must always be supplied.\n");
+    if (!gro_specified) {
+        fprintf(stderr, "Gro file must always be supplied.\n");
         return 1;
     }
     return 0;
@@ -89,11 +88,11 @@ int get_arguments(
 
 void print_usage(const char *program_name)
 {
-    printf("Usage: %s -c GRO_FILE -f XTC_FILE [OPTION]...\n", program_name);
+    printf("Usage: %s -c GRO_FILE [OPTION]...\n", program_name);
     printf("\nOPTIONS\n");
     printf("-h          print this message and exit\n");
     printf("-c STRING   gro file to read\n");
-    printf("-f STRING   xtc file to read\n");
+    printf("-f STRING   xtc file to read (optional)\n");
     printf("-n STRING   ndx file to read (optional, default: index.ndx)\n");
     printf("-l STRING   specification of membrane lipids (default: Membrane) \n");
     printf("-p STRING   specification of protein; use \"no\" if there is no protein (default: Protein)\n");
@@ -118,7 +117,7 @@ void print_arguments(
 {
     printf("Parameters for Water Defect calculation:\n");
     printf(">>> gro file:        %s\n", gro_file);
-    printf(">>> xtc file:        %s\n", xtc_file);
+    if (xtc_file != NULL) printf(">>> xtc file:        %s\n", xtc_file);
     printf(">>> ndx file:        %s\n", ndx_file);
     printf(">>> lipids:          %s\n", lipids);
     if (strcmp(protein, "no")) printf(">>> protein:         %s\n", protein);
@@ -126,6 +125,43 @@ void print_arguments(
     printf(">>> water:           %s\n", water);
     printf(">>> cylinder radius: %f nm\n", radius);
     printf(">>> cylinder height: %f nm\n\n", height);
+}
+
+void calc_wd_frame(
+        system_t *system,
+        const atom_selection_t *membrane_atoms,
+        const atom_selection_t *protein_atoms,
+        const atom_selection_t *water_atoms,
+        const float half_height,
+        const float radius,
+        size_t *upp_w_defect,
+        size_t *low_w_defect)
+{
+    // get membrane center
+    vec_t center_mem = {0};
+    center_of_geometry(membrane_atoms, center_mem, system->box);
+
+    // get protein center
+    vec_t center_prot = {0};
+    if (protein_atoms == NULL) {
+        center_prot[0] = system->box[0] / 2;
+        center_prot[1] = system->box[1] / 2;
+    } else {
+        center_of_geometry(protein_atoms, center_prot, system->box);
+    }
+
+    // calculate water defect
+    for (size_t i = 0; i < water_atoms->n_atoms; ++i) {
+        atom_t *atom = water_atoms->atoms[i];
+
+        float dist = distance1D(atom->position, center_mem, z, system->box);
+        if ((fabsf(dist) < half_height) && 
+            (distance2D(atom->position, center_prot, xy, system->box) < radius)) {
+                // upper leaflet water defect
+                if (dist > 0) ++(*upp_w_defect);
+                else ++(*low_w_defect);
+        }
+    }
 }
 
 int main(int argc, char **argv)
@@ -153,25 +189,6 @@ int main(int argc, char **argv)
     system_t *system = load_gro(gro_file);
     if (system == NULL) return 1;
 
-    // open xtc file for reading
-    XDRFILE *xtc = xdrfile_open(xtc_file, "r");
-    if (xtc == NULL) {
-        fprintf(stderr, "File %s could not be read as an xtc file.\n", xtc_file);
-        free(system);
-        return 1;
-    }
-
-    // set all velocities of all particles to zero (xtc does not contain velocities)
-    reset_velocities(system);
-
-    // check that the gro file and the xtc file match each other
-    if (!validate_xtc(xtc_file, (int) system->n_atoms)) {
-        fprintf(stderr, "Number of atoms in %s does not match %s.\n", xtc_file, gro_file);
-        xdrfile_close(xtc);
-        free(system);
-        return 1;
-    }
-
     // read ndx file
     dict_t *ndx_groups = read_ndx(ndx_file, system);
 
@@ -183,7 +200,6 @@ int main(int argc, char **argv)
     if (membrane_atoms == NULL || membrane_atoms->n_atoms == 0) {
         fprintf(stderr, "No lipid atoms detected.\n");
         dict_destroy(ndx_groups);
-        xdrfile_close(xtc);
         free(all);
         free(membrane_atoms);
         free(system);
@@ -197,7 +213,6 @@ int main(int argc, char **argv)
         if (protein_atoms == NULL || protein_atoms->n_atoms == 0) {
             fprintf(stderr, "No protein atoms detected.\n");
             dict_destroy(ndx_groups);
-            xdrfile_close(xtc);
             free(all);
             free(membrane_atoms);
             free(protein_atoms);
@@ -211,7 +226,6 @@ int main(int argc, char **argv)
     if (water_atoms == NULL || water_atoms->n_atoms == 0) {
         fprintf(stderr, "No water atoms detected.\n");
         dict_destroy(ndx_groups);
-        xdrfile_close(xtc);
         free(all);
         free(membrane_atoms);
         free(protein_atoms);
@@ -220,57 +234,58 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // read xtc
+    
     size_t n_frames = 0;
     size_t upp_w_defect = 0;
     size_t low_w_defect = 0;
-    while (read_xtc_step(xtc, system) == 0) {
+    int return_code = 0;
+
+    // if there is no xtc file provided, analyze the gro file
+    if (xtc_file == NULL) {
         ++n_frames;
-
-        // print info about the progress of reading
-        if ((int) system->time % PROGRESS_FREQ == 0) {
-            printf("Step: %d. Time: %.0f\r", system->step, system->time);
-            fflush(stdout);
+        calc_wd_frame(system, membrane_atoms, protein_atoms, water_atoms, half_height, radius, &upp_w_defect, &low_w_defect);
+    } else {
+        // open xtc file for reading
+        XDRFILE *xtc = xdrfile_open(xtc_file, "r");
+        if (xtc == NULL) {
+            fprintf(stderr, "File %s could not be read as an xtc file.\n", xtc_file);
+            return_code = 1;
+            goto function_end;
         }
 
-        // get membrane center
-        vec_t center_mem = {0};
-        center_of_geometry(membrane_atoms, center_mem, system->box);
-
-        // get protein center
-        vec_t center_prot = {0};
-        if (protein_atoms == NULL) {
-            center_prot[0] = system->box[0] / 2;
-            center_prot[1] = system->box[1] / 2;
-        } else {
-            center_of_geometry(protein_atoms, center_prot, system->box);
+        // check that the gro file and the xtc file match each other
+        if (!validate_xtc(xtc_file, (int) system->n_atoms)) {
+            fprintf(stderr, "Number of atoms in %s does not match %s.\n", xtc_file, gro_file);
+            xdrfile_close(xtc);
+            return_code = 1;
+            goto function_end;
         }
 
-        // calculate water defect
-        for (size_t i = 0; i < water_atoms->n_atoms; ++i) {
-            atom_t *atom = water_atoms->atoms[i];
-
-            float dist = distance1D(atom->position, center_mem, z, system->box);
-            if ((fabsf(dist) < half_height) && 
-                (distance2D(atom->position, center_prot, xy, system->box) < radius)) {
-                    // upper leaflet water defect
-                    if (dist > 0) ++upp_w_defect;
-                    else ++low_w_defect;
+        // read xtc
+        while (read_xtc_step(xtc, system) == 0) {
+            ++n_frames;
+            // print info about the progress of reading
+            if ((int) system->time % PROGRESS_FREQ == 0) {
+                printf("Step: %d. Time: %.0f\r", system->step, system->time);
+                fflush(stdout);
             }
+            calc_wd_frame(system, membrane_atoms, protein_atoms, water_atoms, half_height, radius, &upp_w_defect, &low_w_defect);
         }
+
+        xdrfile_close(xtc);
     }
 
     printf("\n\nAverage upper-leaflet water defect: % 8.4f\n", (float) (upp_w_defect) / n_frames);
     printf("Average lower-leaflet water defect: % 8.4f\n", (float) (low_w_defect) / n_frames);
     printf("Average water defect:               % 8.4f\n", (float) (upp_w_defect + low_w_defect) / n_frames);
 
+    function_end:
     dict_destroy(ndx_groups);
-    xdrfile_close(xtc);
     free(all);
     free(membrane_atoms);
     free(protein_atoms);
     free(water_atoms);
     free(system);
 
-    return 0;
+    return return_code;
 }
