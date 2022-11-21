@@ -81,12 +81,14 @@ int get_arguments(
                 fprintf(stderr, "Beginning must be >=0, not %f.\n", *begin);
                 return 1;
             }
+            break;
         case 'e':
             *end = atof(optarg);
             if (*end < 0) {
                 fprintf(stderr, "End must be >=0, not %f.\n", *end);
                 return 1;
             }
+            break;
         default:
             //fprintf(stderr, "Unknown command line option: %c.\n", opt);
             return 1;
@@ -143,8 +145,8 @@ void print_arguments(
     printf(">>> water:           %s\n", water);
     printf(">>> cylinder radius: %f nm\n", radius);
     printf(">>> cylinder height: %f nm\n", height);
-    printf(">>> analysis start: %f nm\n", begin);
-    printf(">>> analysis end: %f nm\n", end);
+    printf(">>> analysis start:  %f ps\n", begin);
+    printf(">>> analysis end:    %f ps\n\n", end);
 }
 
 void calc_wd_frame(
