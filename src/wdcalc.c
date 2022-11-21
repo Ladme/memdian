@@ -21,13 +21,15 @@ int get_arguments(
         char **protein,
         char **water,
         float *radius,
-        float *height
+        float *height,
+        float *begin,
+        float *end
         ) 
 {
     int gro_specified = 0;
 
     int opt = 0;
-    while((opt = getopt(argc, argv, "c:f:l:n:r:e:p:w:h")) != -1) {
+    while((opt = getopt(argc, argv, "c:f:l:n:r:g:p:w:b:e:h")) != -1) {
         switch (opt) {
         // help
         case 'h':
@@ -66,13 +68,25 @@ int get_arguments(
             }
             break;
         // height of the water defect cylinder
-        case 'e':
+        case 'g':
             *height = atof(optarg);
             if (*height <= 0) {
                 fprintf(stderr, "Cylinder height must be >0, not %f.\n", *height);
                 return 1;
             }
             break;
+        case 'b':
+            *begin = atof(optarg);
+            if (*begin < 0) {
+                fprintf(stderr, "Beginning must be >=0, not %f.\n", *begin);
+                return 1;
+            }
+        case 'e':
+            *end = atof(optarg);
+            if (*end < 0) {
+                fprintf(stderr, "End must be >=0, not %f.\n", *end);
+                return 1;
+            }
         default:
             //fprintf(stderr, "Unknown command line option: %c.\n", opt);
             return 1;
@@ -98,7 +112,9 @@ void print_usage(const char *program_name)
     printf("-p STRING   specification of protein; use \"no\" if there is no protein (default: Protein)\n");
     printf("-w STRING   specification of water (default: name W)\n");
     printf("-r FLOAT    radius of the water defect cylinder in nm (default: 2.5)\n");
-    printf("-e FLOAT    height of the water defect cylinder in nm (default: 4.0)\n");
+    printf("-g FLOAT    height of the water defect cylinder in nm (default: 4.0)\n");
+    printf("-b FLOAT    start of the analysis in ps (default: 0.0)\n");
+    printf("-e FLOAT    end of the analysis in ps, 0 means entire simulation (default: 0.0)\n");
     printf("\n");
 }
 
@@ -113,7 +129,9 @@ void print_arguments(
         const char *protein,
         const char *water,
         const float radius,
-        const float height)
+        const float height,
+        const float begin,
+        const float end)
 {
     printf("Parameters for Water Defect calculation:\n");
     printf(">>> gro file:        %s\n", gro_file);
@@ -124,7 +142,9 @@ void print_arguments(
     else printf(">>> protein:         ---\n");
     printf(">>> water:           %s\n", water);
     printf(">>> cylinder radius: %f nm\n", radius);
-    printf(">>> cylinder height: %f nm\n\n", height);
+    printf(">>> cylinder height: %f nm\n", height);
+    printf(">>> analysis start: %f nm\n", begin);
+    printf(">>> analysis end: %f nm\n", end);
 }
 
 void calc_wd_frame(
@@ -176,14 +196,16 @@ int main(int argc, char **argv)
     char *water    = "name W";
     float radius   = 2.5;
     float height   = 4.0;
-    if (get_arguments(argc, argv, &gro_file, &xtc_file, &ndx_file, &lipids, &protein, &water, &radius, &height) != 0) {
+    float begin    = 0.0;
+    float end      = 0.0;
+    if (get_arguments(argc, argv, &gro_file, &xtc_file, &ndx_file, &lipids, &protein, &water, &radius, &height, &begin, &end) != 0) {
         print_usage(argv[0]);
         return 1;
     }
     // get half the height of the cylinder which will later be used for calculation
     float half_height = height / 2;
 
-    print_arguments(gro_file, xtc_file, ndx_file, lipids, protein, water, radius, height);
+    print_arguments(gro_file, xtc_file, ndx_file, lipids, protein, water, radius, height, begin, end);
 
     // read gro file
     system_t *system = load_gro(gro_file);
@@ -263,6 +285,9 @@ int main(int argc, char **argv)
 
         // read xtc
         while (read_xtc_step(xtc, system) == 0) {
+            if (system->time < begin) continue;
+            if (end != 0.0 && system->time > end) break;
+
             ++n_frames;
             // print info about the progress of reading
             if ((int) system->time % PROGRESS_FREQ == 0) {
