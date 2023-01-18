@@ -31,7 +31,7 @@ Memdian programs require you to have groan library installed. You can get groan 
 
 ### How does it work
 
-`memthick` generates a mesh for every membrane leaflet with bins every 0.1 nm and then calculates average z-position of phosphate atoms in each bin from the simulation trajectory. Membrane thickness is then calculated for each bin as the difference between the average z-position of phosphates in the upper-leaflet bin and the average z-position of phosphates in the corresponding lower-leaflet bin.
+`memthick` generates a mesh for every membrane leaflet with bins every 0.1 nm and then calculates average z-position of phosphate beads in each bin from the simulation trajectory. Membrane thickness is then calculated for each bin as the difference between the average z-position of phosphates in the upper-leaflet bin and the average z-position of phosphates in the corresponding lower-leaflet bin.
 
 ### Options
 
