@@ -22,7 +22,8 @@ int get_arguments(
         char **gro_file,
         char **xtc_file,
         char **ndx_file,
-        char **output_file,
+        char **output_upper,
+        char **output_lower,
         char **lipids,
         char **phosphates,
         float *array_dimx,
@@ -54,7 +55,10 @@ int get_arguments(
             break;
         // output file name
         case 'o':
-            *output_file = optarg;
+            *output_upper = malloc(strlen(optarg) + 15);
+            *output_lower = malloc(strlen(optarg) + 15);
+            sprintf(*output_upper, "%s_upper.dat", optarg);
+            sprintf(*output_lower, "%s_lower.dat", optarg);
             break;
         // specification of the lipids
         case 'l':
@@ -107,13 +111,13 @@ void print_usage(const char *program_name)
     printf("-c STRING        gro file to read\n");
     printf("-f STRING        xtc file to read\n");
     printf("-n STRING        ndx file to read (optional, default: index.ndx)\n");
-    printf("-o STRING        output file name (default: membrane_planes.dat)\n");
+    printf("-o STRING        pattern for the output files (default: thickness)\n");
     printf("-l STRING        specification of membrane lipids (default: Membrane)\n");
     printf("-p STRING        specification of lipid phosphates (default: name PO4)\n");
     printf("-x FLOAT-FLOAT   grid dimensions in x axis (default: box size from gro file)\n");
     printf("-y FLOAT-FLOAT   grid dimensions in y axis (default: box size from gro file)\n");
     printf("-a INTEGER       NAN limit: how many phosphates must be detected in a grid tile\n");
-    printf("                 to calculate membrane thickness for this tile (default: 30)\n");
+    printf("                 to calculate leaflet thickness for this tile (default: 30)\n");
     printf("\n");
 }
 
@@ -125,18 +129,19 @@ void print_arguments(
         const char *gro_file, 
         const char *xtc_file,
         const char *ndx_file,
-        const char *output_file,
+        const char *output_upper,
+        const char *output_lower,
         const char *lipids,
         const char *phosphates,
         const float *array_dimx,
         const float *array_dimy,
         const int nan_limit)
 {
-    fprintf(stream, "Parameters for Membrane Planes calculation:\n");
+    fprintf(stream, "Parameters for Leaflet Thickness calculation:\n");
     fprintf(stream, ">>> gro file:         %s\n", gro_file);
     fprintf(stream, ">>> xtc file:         %s\n", xtc_file);
     fprintf(stream, ">>> ndx file:         %s\n", ndx_file);
-    fprintf(stream, ">>> output file:      %s\n", output_file);
+    fprintf(stream, ">>> output files:     %s, %s\n", output_upper, output_lower);
     fprintf(stream, ">>> lipids:           %s\n", lipids);
     fprintf(stream, ">>> phosphates:       %s\n", phosphates);
     fprintf(stream, ">>> grid dimensions:  x: %.1f - %.1f nm, y: %.1f - %.1f nm\n", array_dimx[0], array_dimx[1], array_dimy[0], array_dimy[1]);
@@ -160,9 +165,9 @@ static inline size_t coor2index(float x, float minx)
 }
 
 /*
- * Writes membrane plane for a specified leaflet.
+ * Writes leaflet thickness for a specified leaflet.
  */
-void write_plane(
+void write_output(
         FILE *output, 
         float *leaflet,
         int *leaflet_counts,
@@ -171,8 +176,22 @@ void write_plane(
         int nan_limit,
         float array_dimx[2],
         float array_dimy[2],
-        float membrane_center_z)
+        char **argv,
+        int argc)
 {
+    fprintf(output, "# Generated with leafthick (C Leaflet Thickness Calculator) %s\n", VERSION);
+    fprintf(output, "# Command line: ");
+    for (int i = 0; i < argc; ++i) {
+        fprintf(output, "%s ", argv[i]);
+    }
+    fprintf(output, "\n");
+    fprintf(output, "@ xlabel x coordinate [nm]\n");
+    fprintf(output, "@ ylabel y coordinate [nm]\n");
+    fprintf(output, "@ zlabel leaflet thickness [nm]\n");
+    fprintf(output, "@ grid --\n");
+    fprintf(output, "$ type colorbar\n");
+    fprintf(output, "$ colormap rainbow\n");
+
     for (size_t y = 0; y < n_rows; ++y) {
         for (size_t x = 0; x < n_cols; ++x) {
 
@@ -185,7 +204,7 @@ void write_plane(
             fprintf(output, "%f %f %.4f\n", 
                 index2coor(x, array_dimx[0]), 
                 index2coor(y, array_dimy[0]), 
-                leaflet[y * n_cols + x] / leaflet_counts[y * n_cols + x] + membrane_center_z);
+                fabsf(leaflet[y * n_cols + x] / leaflet_counts[y * n_cols + x]));
         }
     }
 }
@@ -197,15 +216,26 @@ int main(int argc, char **argv)
     char *gro_file = NULL;
     char *xtc_file = NULL;
     char *ndx_file = "index.ndx";
-    char *output_file = "membrane_planes.dat";
+    char *output_upper = NULL;
+    char *output_lower = NULL;
     char *lipids   = "Membrane";
     char *phosphates = "name PO4";
     float array_dimx[2] = {0.};
     float array_dimy[2] = {0.};
     int nan_limit = 30;
-    if (get_arguments(argc, argv, &gro_file, &xtc_file, &ndx_file, &output_file, &lipids, &phosphates, array_dimx, array_dimy, &nan_limit) != 0) {
+    if (get_arguments(argc, argv, &gro_file, &xtc_file, &ndx_file, &output_upper, &output_lower, &lipids, &phosphates, array_dimx, array_dimy, &nan_limit) != 0) {
         print_usage(argv[0]);
         return 1;
+    }
+
+    if (output_upper == NULL) {
+        output_upper = malloc(50);
+        strncpy(output_upper, "thickness_upper.dat", 50);
+    }
+
+    if (output_lower == NULL) {
+        output_lower = malloc(50);
+        strncpy(output_lower, "thickness_lower.dat", 50);
     }
 
     // check that the nan limit is > 0
@@ -214,17 +244,31 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // we open the output file quite early to check that it can actually be opened
-    // we do not want to calculate everything and then find out that the output file is unreachable
-    FILE *output = fopen(output_file, "w");
-    if (output == NULL) {
-        fprintf(stderr, "Output file could not be opened.\n");
+    // we open the output files quite early to check that it can actually be opened
+    // we do not want to calculate everything and then find out that the output files are unreachable
+    FILE *output_u = fopen(output_upper, "w");
+    if (output_u == NULL) {
+        fprintf(stderr, "Output file '%s' could not be opened.\n", output_upper);
+        free(output_upper);
+        free(output_lower);
+        return 1;
+    }
+
+    FILE *output_l = fopen(output_lower, "w");
+    if (output_l == NULL) {
+        fprintf(stderr, "Output file '%s' could not be opened.\n", output_lower);
+        free(output_upper);
+        free(output_lower);
         return 1;
     }
 
     // read gro file
     system_t *system = load_gro(gro_file);
-    if (system == NULL) return 1;
+    if (system == NULL) {
+        free(output_upper);
+        free(output_lower);
+        return 1;
+    }
 
     // if array dimensions were not set, get them from gro file
     // (yes, i know... direct comparing of float to 0, not a good idea, blah blah... but here it should work)
@@ -238,16 +282,20 @@ int main(int argc, char **argv)
     // check that the array dimensions don't have nonsensical values
     if (array_dimx[0] >= array_dimx[1] || array_dimy[0] >= array_dimy[1]) {
         fprintf(stderr, "Nonsensical array dimensions.\n");
+        free(output_upper);
+        free(output_lower);
         return 1;
     }
 
-    print_arguments(stdout, gro_file, xtc_file, ndx_file, output_file, lipids, phosphates, array_dimx, array_dimy, nan_limit);
+    print_arguments(stdout, gro_file, xtc_file, ndx_file, output_upper, output_lower, lipids, phosphates, array_dimx, array_dimy, nan_limit);
 
     // open xtc file for reading
     XDRFILE *xtc = xdrfile_open(xtc_file, "r");
     if (xtc == NULL) {
         fprintf(stderr, "File %s could not be read as an xtc file.\n", xtc_file);
         free(system);
+        free(output_upper);
+        free(output_lower);
         return 1;
     }
 
@@ -259,6 +307,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "Number of atoms in %s does not match %s.\n", xtc_file, gro_file);
         xdrfile_close(xtc);
         free(system);
+        free(output_upper);
+        free(output_lower);
         return 1;
     }
 
@@ -277,6 +327,8 @@ int main(int argc, char **argv)
         free(all);
         free(membrane_atoms);
         free(system);
+        free(output_upper);
+        free(output_lower);
         return 1;
     }
 
@@ -290,6 +342,8 @@ int main(int argc, char **argv)
         free(membrane_atoms);
         free(phosphate_atoms);
         free(system);
+        free(output_upper);
+        free(output_lower);
         return 1;
     }
 
@@ -307,11 +361,15 @@ int main(int argc, char **argv)
         fprintf(stderr, "Could not allocate memory (grid too large?)\n");
         dict_destroy(ndx_groups);
         xdrfile_close(xtc);
-        fclose(output);
+        fclose(output_u);
+        fclose(output_l);
+
         free(all);
         free(membrane_atoms);
         free(phosphate_atoms);
         free(system);
+        free(output_upper);
+        free(output_lower);
         return 1;
     }
 
@@ -360,27 +418,16 @@ int main(int argc, char **argv)
     }
     printf("\n");
 
-    av_membrane_center_z /= frames;
-
-    // write header for the output file
-    fprintf(output, "# Generated with memplanes (C Membrane Planes Calculator) %s\n", VERSION);
-    fprintf(output, "# Command line: ");
-    for (int i = 0; i < argc; ++i) {
-        fprintf(output, "%s ", argv[i]);
-    }
-    fprintf(output, "\n");
-
-    fprintf(output, "# Upper leaflet:\n");
-
-    // write membrane planes
-    write_plane(output, upper_leaflet, upper_leaflet_counts, n_rows, n_cols, nan_limit, array_dimx, array_dimy, av_membrane_center_z);
-
-    fprintf(output, "# Lower leaflet:\n");
-    write_plane(output, lower_leaflet, lower_leaflet_counts, n_rows, n_cols, nan_limit, array_dimx, array_dimy, av_membrane_center_z);
+    // write output files
+    write_output(output_u, upper_leaflet, upper_leaflet_counts, n_rows, n_cols, nan_limit, array_dimx, array_dimy, argv, argc);
+    write_output(output_l, lower_leaflet, lower_leaflet_counts, n_rows, n_cols, nan_limit, array_dimx, array_dimy, argv, argc);
 
     dict_destroy(ndx_groups);
     xdrfile_close(xtc);
-    fclose(output);
+    fclose(output_u);
+    fclose(output_l);
+    
+    
     free(all);
     free(membrane_atoms);
     free(phosphate_atoms);
@@ -390,6 +437,9 @@ int main(int argc, char **argv)
     free(upper_leaflet_counts);
     free(lower_leaflet);
     free(lower_leaflet_counts);
+
+    free(output_upper);
+    free(output_lower);
 
     return 0;
 }
