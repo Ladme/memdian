@@ -11,6 +11,7 @@ Note that when selecting beads (or atoms), memdian programs use the [groan selec
 1) **memthick** calculates membrane thickness (phosphate-phosphate distance) across the entire membrane and writes the result as a plottable xy-map.
 2) **wdcalc** calculates water defect: a number of water beads/molecules inside a specified cylinder.
 3) **wdmap** calculates water defect across the entire membrane and writes the result as a plottable xy-map.
+4) **memplanes** calculates thickness of each membrane leaflet and writes the result as a plottable xy-map.
 
 ## Dependencies
 
@@ -199,6 +200,63 @@ Plotted xy map of the water defect can look for example like this:
 ![Plotted water defect map obtained by wdmap](examples/wd_map.png)
 
 _This shows a dimer of an unspecified beta-barrel in a membrane. The circular areas of large water defect are water pores inside the beta-barrels._
+
+
+## memplanes
+
+`memplanes` is similar to `memthick` but it calculates thickness of each membrane leaflet (separately). In other words, instead of calculating the difference between the average z-position of the phosphates in the upper and lower leaflet, it calculates the difference between the average z-position of phosphates in a particular leaflet and the global membrane center of mass.
+
+### Options
+
+```
+Usage: memplanes -c GRO_FILE -f XTC_FILE [OPTION]...
+
+OPTIONS
+-h               print this message and exit
+-c STRING        gro file to read
+-f STRING        xtc file to read
+-n STRING        ndx file to read (optional, default: index.ndx)
+-o STRING        output file name (default: membrane_planes.dat)
+-l STRING        specification of membrane lipids (default: Membrane)
+-p STRING        specification of lipid phosphates (default: name PO4)
+-x FLOAT-FLOAT   grid dimensions in x axis (default: box size from gro file)
+-y FLOAT-FLOAT   grid dimensions in y axis (default: box size from gro file)
+-a INTEGER       NAN limit: how many phosphates must be detected in a grid tile
+                 to calculate membrane thickness for this tile (default: 30)
+```
+
+When specifying 'lipid phosphates' using the `-p` flag, note that memplanes expects one 'lipid phosphate' per lipid molecule.
+
+When using `memplanes` to analyze membrane-protein simulation, it is a good idea to center (and fit) the protein. Otherwise any interesting changes in the phosphate positions might get averaged out.
+
+### Example
+
+```
+memplanes -c system.gro -f md_centered_fit.xtc -l "resname POPC" -x 5-10 -y "3 - 12" -a 15
+```
+
+Memplanes will load information about the atoms (but not atom coordinates) from `system.gro`. Every simulation frame saved in the trajectory `md_centered_fit.xtc` will be analyzed. Analyzed part of the simulation box can be specified using the flags `-x` and `-y`. In this case, memplanes will only analyze block-shaped area spanning from coordinate `5 nm` to coordinate `15 nm` on the x-axis and from coordinate `3 nm` to coordinate `12 nm` on the y-axis. The size of the area on the z-axis corresponds to the current size of the simulation box. This area will be covered with a mesh of 0.1 nm^2 bins. Average phosphate position will be calculated for every bin with sufficient number of samples collected during the simulation: in this case, 15 samples (flag `-a`). 
+
+All atoms corresponding to residues named `POPC` will be considered to be lipid atoms and will be used for the calculation of membrane center. Atoms named `PO4` (default option) will be considered to represent phosphates and their average position relative to the membrane center will be calculated. Lipids (or phosphates) are assigned to each leaflet based on their position relative to the membrane center. All phosphates currently positioned _above_ the membrane center of geometry will be assigned to the upper leaflet, while phosphates currently positioned _below_ the membrane center of geometry will be assigned to the lower leaflet. Assigning lipids to individual leaflets is performed for every frame of the trajectory.
+
+The result of the analysis will be written into `membrane_planes.dat` (default option) in the following format:
+```
+# SPECIFICATION OF THE PROGRAM USED AND ITS VERSION
+# ARGUMENTS OF THE COMMAND LINE
+# Upper leaflet:    <-- what follows is the average position of the phosphates from the upper leaflet
+X_COORDINATE1 Y_COORDINATE1 AVERAGE_LEAFLET_THICKNESS_IN_THIS_BIN
+X_COORDINATE2 Y_COORDINATE1 AVERAGE_LEAFLET_THICKNESS_IN_THIS_BIN
+X_COORDINATE3 Y_COORDINATE1 AVERAGE_LEAFLET_THICKNESS_IN_THIS_BIN
+...
+X_COORDINATE1 Y_COORDINATE2 AVERAGE_LEAFLET_THICKNESS_IN_THIS_BIN    <-- note that x-coordinate is the fastest changing
+...
+# Lower leaflet:   <-- what follows is the average position of the phosphates from the lower leaflet
+X_COORDINATE1 Y_COORDINATE1 AVERAGE_LEAFLET_THICKNESS_IN_THIS_BIN
+X_COORDINATE2 Y_COORDINATE1 AVERAGE_LEAFLET_THICKNESS_IN_THIS_BIN
+X_COORDINATE3 Y_COORDINATE1 AVERAGE_LEAFLET_THICKNESS_IN_THIS_BIN
+...
+X_COORDINATE1 Y_COORDINATE2 AVERAGE_LEAFLET_THICKNESS_IN_THIS_BIN
+```
 
 ## Limitations of memdian programs
 

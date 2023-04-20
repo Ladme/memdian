@@ -1,7 +1,8 @@
-all: src/memthick.c src/wdcalc.c src/wdmap.c
+all: src/memthick.c src/wdcalc.c src/wdmap.c src/memplanes.c
 	make memthick groan=${groan}
 	make wdcalc groan=${groan}
 	make wdmap groan=${groan}
+	make memplanes groan=${groan}
 
 memthick: src/memthick.c
 	gcc src/memthick.c -I$(groan) -L$(groan) -D_POSIX_C_SOURCE=200809L -o memthick -lgroan -lm -std=c99 -pedantic -Wall -Wextra -O3 -march=native
@@ -12,7 +13,11 @@ wdcalc: src/wdcalc.c
 wdmap: src/wdmap.c
 	gcc src/wdmap.c -I$(groan) -L$(groan) -D_POSIX_C_SOURCE=200809L -o wdmap -lgroan -lm -std=c99 -pedantic -Wall -Wextra -O3 -march=native
 
+memplanes: src/memplanes.c
+	gcc src/memplanes.c -I$(groan) -L$(groan) -D_POSIX_C_SOURCE=200809L -o memplanes -lgroan -lm -std=c99 -pedantic -Wall -Wextra -O3 -march=native
+
 install:
 	if [ -f memthick ];  then cp memthick ${HOME}/.local/bin;  fi
 	if [ -f wdcalc ];    then cp wdcalc ${HOME}/.local/bin;    fi
 	if [ -f wdmap ];     then cp wdmap ${HOME}/.local/bin;     fi
+	if [ -f memplanes ]; then cp memplanes ${HOME}/.local/bin; fi
