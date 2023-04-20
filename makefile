@@ -2,7 +2,7 @@ all: src/memthick.c src/wdcalc.c src/wdmap.c src/leafthick.c
 	make memthick groan=${groan}
 	make wdcalc groan=${groan}
 	make wdmap groan=${groan}
-	make ĺeafthick groan=${groan}
+	make leafthick groan=${groan}
 
 memthick: src/memthick.c
 	gcc src/memthick.c -I$(groan) -L$(groan) -D_POSIX_C_SOURCE=200809L -o memthick -lgroan -lm -std=c99 -pedantic -Wall -Wextra -O3 -march=native
