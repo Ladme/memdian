@@ -142,7 +142,7 @@ Average water defect:                14.6037
 
 ### How does it work
 
-`wdmap` is a hybrid between `memthick` and `wdcalc`. Similar to the `memthick`, a mesh with bins every 0.1 nm is generated for the membrane, and similar to the `wdcalc`, water defect is calculated for each individual bin of the mesh. A plottable xy-map of the average water defect in every bin is then produced.
+`wdmap` is a hybrid between `memthick` and `wdcalc`. Similar to the `memthick`, a mesh with bins every 0.1 nm is generated for the membrane, and similar to the `wdcalc`, water defect is calculated for each individual bin of the mesh. A plottable xy-map of the average water defect in every bin is then produced for every membrane leaflet as well as for the entire membrane.
 
 ### Options
 
@@ -154,7 +154,7 @@ OPTIONS
 -c STRING        gro file to read
 -f STRING        xtc file to read
 -n STRING        ndx file to read (optional, default: index.ndx)
--o STRING        output file name (default: wd_map.dat)
+-o STRING        pattern for the output files (default: wd_map)
 -l STRING        specification of membrane lipids (default: Membrane)
 -w STRING        specification of water (default: name W)
 -e FLOAT         water defect height (default: 4 nm)
@@ -175,7 +175,7 @@ wdmap -c system.gro -f md_centered.xtc -l "resname POPC" -x 3.2-15.2 -y "3.2 - 1
 
 All atoms corresponding to residues named `POPC` will be considered to be membrane lipid atoms. Atoms named `W` (default option) will be considered to represent water molecules and will be used to calculate the water defect. Only water atoms closer than _1.5_ nm (flag `-e 3.0`) from the geometric center of the `POPC` residues will be considered to be part of the water defect.
 
-The result of the analysis will be written into `wd_map.dat` (default option) in the following format:
+The result of the analysis will be written into three output files, `wd_map_upper.dat`, `wd_map_lower.dat`, `wd_map.dat` (default option) in the following format:
 ```
 # SPECIFICATION OF THE PROGRAM USED AND ITS VERSION
 # ARGUMENTS OF THE COMMAND LINE
@@ -194,9 +194,9 @@ X_COORDINATE1 Y_COORDINATE2 AVERAGE_WATER_DEFECT_IN_THIS_BIN    <-- note that x-
 # Average water defect per square Å: AVERAGE_WATER_DEFECT_ACROSS_THE_MEMBRANE
 ```
 
-All units of distance (coordinates) in the output file are in nanometers.
+`wd_map_upper.dat` corresponds to the water defect detected in the upper leaflet, `wd_map_lower.dat` to the water defect detected in the lower leaflet, `wd_map.dat` to the water defect in the entire membrane. *Global* membrane center of geometry is used to identify the upper and lower leaflet of the membrane. All units of distance (coordinates) in the output file are in nanometers.
 
-Plotted xy map of the water defect can look for example like this:
+Plotted xy map of the water defect in the entire membrane can look for example like this:
 ![Plotted water defect map obtained by wdmap](examples/wd_map.png)
 
 _This shows a dimer of an unspecified beta-barrel in a membrane. The circular areas of large water defect are water pores inside the beta-barrels._

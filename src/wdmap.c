@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <groan.h>
 
-const char VERSION[] = "v2022/06/25";
+const char VERSION[] = "v2023/08/07";
 
 // frequency of printing during the calculation
 const int PROGRESS_FREQ = 10000;
@@ -22,7 +22,7 @@ int get_arguments(
         char **gro_file,
         char **xtc_file,
         char **ndx_file,
-        char **output_file,
+        char **output_pattern,
         char **lipids,
         char **water,
         float *height,
@@ -53,7 +53,7 @@ int get_arguments(
             break;
         // output file name
         case 'o':
-            *output_file = optarg;
+            *output_pattern = optarg;
             break;
         // specification of the lipids
         case 'l':
@@ -110,7 +110,7 @@ void print_usage(const char *program_name)
     printf("-c STRING        gro file to read\n");
     printf("-f STRING        xtc file to read\n");
     printf("-n STRING        ndx file to read (optional, default: index.ndx)\n");
-    printf("-o STRING        output file name (default: wd_map.dat)\n");
+    printf("-o STRING        pattern for the output files (default: wd_map)\n");
     printf("-l STRING        specification of membrane lipids (default: Membrane)\n");
     printf("-w STRING        specification of water (default: name W)\n");
     printf("-e FLOAT         water defect height (default: 4 nm)\n");
@@ -127,7 +127,9 @@ void print_arguments(
         const char *gro_file, 
         const char *xtc_file,
         const char *ndx_file,
-        const char *output_file,
+        const char *output_file_upper,
+        const char *output_file_lower,
+        const char *output_file_full,
         const char *lipids,
         const char *water,
         const float height,
@@ -138,7 +140,7 @@ void print_arguments(
     fprintf(stream, ">>> gro file:         %s\n", gro_file);
     fprintf(stream, ">>> xtc file:         %s\n", xtc_file);
     fprintf(stream, ">>> ndx file:         %s\n", ndx_file);
-    fprintf(stream, ">>> output file:      %s\n", output_file);
+    fprintf(stream, ">>> output files:     %s, %s, %s\n", output_file_upper, output_file_lower, output_file_full);
     fprintf(stream, ">>> lipids:           %s\n", lipids);
     fprintf(stream, ">>> water:            %s\n", water);
     fprintf(stream, ">>> wd height:        %f\n", height);
@@ -162,6 +164,54 @@ static inline size_t coor2index(float x, float minx)
     return (size_t) roundf((x - minx) * GRID_TILE);
 }
 
+/*
+ * Write output file showing water defect map.
+ */
+static void write_output(
+        FILE *output, 
+        int argc, 
+        char **argv, 
+        const size_t n_rows, 
+        const size_t n_cols, 
+        const size_t n_frames,
+        const size_t *wd_map,
+        const float *array_dimx,
+        const float *array_dimy) 
+{
+    // write header for the output file
+    fprintf(output, "# Generated with wdmap (C Water Defect Map Calculator) %s\n", VERSION);
+    fprintf(output, "# Command line: ");
+    for (int i = 0; i < argc; ++i) {
+        fprintf(output, "%s ", argv[i]);
+    }
+    fprintf(output, "\n# See average water defect at the end of this file.\n");
+    fprintf(output, "@ xlabel x coordinate [nm]\n");
+    fprintf(output, "@ ylabel y coordinate [nm]\n");
+    fprintf(output, "@ zlabel water defect [arb. u.]\n");
+    fprintf(output, "$ type colorbar\n");
+    fprintf(output, "$ colormap hot\n");
+
+    float av_wd = 0;
+    size_t n_samples = 0;
+
+    // calculate the average water defect for each tile and write it into the output file
+    for (size_t y = 0; y < n_rows; ++y) {
+        for (size_t x = 0; x < n_cols; ++x) {
+
+            float wd = (float) wd_map[y * n_cols + x] / n_frames;
+            
+            av_wd += wd;
+            ++n_samples;
+
+            fprintf(output, "%f %f %.6f\n", index2coor(x, array_dimx[0]), index2coor(y, array_dimy[0]), wd);
+        }
+    }
+
+    av_wd /= n_samples;
+    //printf("\nAverage water defect per square Å : %.6f arb. u.\n", av_wd);
+    fprintf(output, "# Average water defect per square Å: %.6f arb. u.\n", av_wd);
+}
+
 int main(int argc, char **argv)
 {
     printf("\n");
@@ -169,22 +219,33 @@ int main(int argc, char **argv)
     char *gro_file = NULL;
     char *xtc_file = NULL;
     char *ndx_file = "index.ndx";
-    char *output_file = "wd_map.dat";
+    char *output_pattern = "wd_map";
     char *lipids   = "Membrane";
     char *water = "name W";
     float height = 4.0f;
     float array_dimx[2] = {0.};
     float array_dimy[2] = {0.};
-    if (get_arguments(argc, argv, &gro_file, &xtc_file, &ndx_file, &output_file, &lipids, &water, &height, array_dimx, array_dimy) != 0) {
+    if (get_arguments(argc, argv, &gro_file, &xtc_file, &ndx_file, &output_pattern, &lipids, &water, &height, array_dimx, array_dimy) != 0) {
         print_usage(argv[0]);
         return 1;
     }
 
-    // we open the output file quite early to check that it can actually be opened
+    // get the names of the output files
+    char *output_file_upper = calloc(strlen(output_pattern) + 20, 1);
+    char *output_file_lower = calloc(strlen(output_pattern) + 20, 1);
+    char *output_file_full = calloc(strlen(output_pattern) + 20, 1);
+
+    sprintf(output_file_upper, "%s_upper.dat", output_pattern);
+    sprintf(output_file_lower, "%s_lower.dat", output_pattern);
+    sprintf(output_file_full, "%s.dat", output_pattern);
+
+    // we open the output files quite early to check that it can actually be opened
     // we do not want to calculate everything and then find out that the output file is unreachable
-    FILE *output = fopen(output_file, "w");
-    if (output == NULL) {
-        fprintf(stderr, "Output file could not be opened.\n");
+    FILE *output_upper = fopen(output_file_upper, "w");
+    FILE *output_lower = fopen(output_file_lower, "w");
+    FILE *output_full  = fopen(output_file_full, "w");
+    if (!output_upper || !output_lower || !output_full) {
+        fprintf(stderr, "Some of the output files could not be opened.\n");
         return 1;
     }
 
@@ -207,7 +268,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    print_arguments(stdout, gro_file, xtc_file, ndx_file, output_file, lipids, water, height, array_dimx, array_dimy);
+    print_arguments(stdout, gro_file, xtc_file, ndx_file, output_file_upper, output_file_lower, output_file_full, lipids, water, height, array_dimx, array_dimy);
 
     // open xtc file for reading
     XDRFILE *xtc = xdrfile_open(xtc_file, "r");
@@ -264,13 +325,17 @@ int main(int argc, char **argv)
     size_t n_cols = (size_t) roundf( (array_dimx[1] - array_dimx[0]) * GRID_TILE ) + 1;
     size_t n_tiles = n_rows * n_cols;
 
-    size_t *wd_map = calloc(n_tiles, sizeof(size_t));
+    size_t *wd_map_upper = calloc(n_tiles, sizeof(size_t));
+    size_t *wd_map_lower = calloc(n_tiles, sizeof(size_t));
+    size_t *wd_map_full  = calloc(n_tiles, sizeof(size_t));
 
-    if (wd_map == NULL) {
+    if (wd_map_upper == NULL || wd_map_lower == NULL || wd_map_full == NULL) {
         fprintf(stderr, "Could not allocate memory (grid too large?)\n");
         dict_destroy(ndx_groups);
         xdrfile_close(xtc);
-        fclose(output);
+        fclose(output_upper);
+        fclose(output_lower);
+        fclose(output_full);
         free(all);
         free(membrane_atoms);
         free(water_atoms);
@@ -315,56 +380,42 @@ int main(int argc, char **argv)
             size_t y_index = coor2index(atom->position[1], array_dimy[0]);
             
             // assign the atom to a tile
-            ++wd_map[y_index * n_cols + x_index];
+            if (rel_pos_z > 0) {
+                ++wd_map_upper[y_index * n_cols + x_index];
+            } else {
+                ++wd_map_lower[y_index * n_cols + x_index];
+            }
+
+            ++wd_map_full[y_index * n_cols + x_index];
         }
 
         // increase the number of analyzed frames
         ++n_frames;
-
     }
 
-    // write header for the output file
-    fprintf(output, "# Generated with wdmap (C Water Defect Map Calculator) %s\n", VERSION);
-    fprintf(output, "# Command line: ");
-    for (int i = 0; i < argc; ++i) {
-        fprintf(output, "%s ", argv[i]);
-    }
-    fprintf(output, "\n# See average water defect at the end of this file.\n");
-    fprintf(output, "@ xlabel x coordinate [nm]\n");
-    fprintf(output, "@ ylabel y coordinate [nm]\n");
-    fprintf(output, "@ zlabel water defect [arb. u.]\n");
-    fprintf(output, "$ type colorbar\n");
-    fprintf(output, "$ colormap hot\n");
-
-    float av_wd = 0;
-    size_t n_samples = 0;
-
-    // calculate the average water defect for each tile and write it into the output file
-    for (size_t y = 0; y < n_rows; ++y) {
-        for (size_t x = 0; x < n_cols; ++x) {
-
-            float wd = (float) wd_map[y * n_cols + x] / n_frames;
-            
-            av_wd += wd;
-            ++n_samples;
-
-            fprintf(output, "%f %f %.6f\n", index2coor(x, array_dimx[0]), index2coor(y, array_dimy[0]), wd);
-        }
-    }
-
-    av_wd /= n_samples;
-    printf("\nAverage water defect per square Å : %.6f arb. u.\n", av_wd);
-    fprintf(output, "# Average water defect per square Å: %.6f arb. u.\n", av_wd);
+    // write output files
+    write_output(output_upper, argc, argv, n_rows, n_cols, n_frames, wd_map_upper, array_dimx, array_dimy);
+    write_output(output_lower, argc, argv, n_rows, n_cols, n_frames, wd_map_lower, array_dimx, array_dimy);
+    write_output(output_full,  argc, argv, n_rows, n_cols, n_frames, wd_map_full,  array_dimx, array_dimy);
 
     dict_destroy(ndx_groups);
     xdrfile_close(xtc);
-    fclose(output);
+    fclose(output_upper);
+    fclose(output_lower);
+    fclose(output_full);
+
+    free(output_file_upper);
+    free(output_file_lower);
+    free(output_file_full);
+
     free(all);
     free(membrane_atoms);
     free(water_atoms);
     free(system);
 
-    free(wd_map);
+    free(wd_map_upper);
+    free(wd_map_lower);
+    free(wd_map_full);
 
     return 0;
 }
