@@ -8,7 +8,7 @@ Note that when selecting beads (or atoms), memdian programs use the [groan selec
 
 ## Available programs
 
-1) **memthick** calculates membrane thickness (phosphate-phosphate distance) across the entire membrane and writes the result as a plottable xy-map.
+1) **memthick** calculates membrane thickness (phosphate-phosphate distance) across the entire membrane and writes the result as a plottable xy-map. (**Newer version available from [github.com/Ladme/memthick](https://github.com/Ladme/memthick).**)
 2) **wdcalc** calculates water defect: a number of water beads/molecules inside a specified cylinder.
 3) **wdmap** calculates water defect across the entire membrane and writes the result as a plottable xy-map.
 4) **leafthick** calculates thickness of each membrane leaflet and writes the results as two plottable xy-maps.
@@ -29,6 +29,9 @@ Memdian programs require you to have groan library installed. You can get groan 
 2) (Optional) Run `make install` to copy all compiled memdian programs into `${HOME}/.local/bin`.
 
 ## memthick
+
+**⚠️ You may want to consider using the newer rewrite of `memthick` available from [github.com/Ladme/memthick](https://github.com/Ladme/memthick). ⚠️**
+---
 
 ### How does it work
 
